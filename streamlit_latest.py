@@ -7,7 +7,17 @@ from scipy.optimize import minimize
 import os
 
 st.set_page_config(page_title="Optimasi Proses Rotary Kiln dan Electric Furnace", layout="wide")
+
+# Menampilkan judul aplikasi
 st.title("Optimasi Proses Rotary Kiln dan Electric Furnace")
+
+# Deskripsi aplikasi
+st.write("""
+Aplikasi ini digunakan untuk **menghitung konfigurasi input yang diperlukan** dalam proses **rotary kiln** dan **electric furnace** 
+berdasarkan **komposisi bahan mentah** yang dimasukkan oleh pengguna. 
+         
+Untuk menggunakan aplikasi ini, silakan masukkan komposisi bahan mentah yang diinginkan pada kolom input di bawah ini.
+""")
 
 # --- Load Data ---
 data_dir = "dataframe"
@@ -33,20 +43,21 @@ def inverse_transform_row(row, scaler, columns):
     arr = np.array(row).reshape(1, -1)
     return pd.Series(scaler.inverse_transform(arr)[0], index=columns)
 
-# --- UI: Manual Input Fields ---
-st.subheader("Masukkan Nilai Karakteristik Bahan Baku dan Proses Tetap")
-
-# List of all input columns (in order)
-def input_field(label, default=0.0):
-    return st.number_input(label, value=float(default), format="%.4f")
-
-user_input = {}
-for col in input_cols:
-    # Use median as default for user convenience
-    median_val = float(df_filtered[col].median())
-    user_input[col] = input_field(col, median_val)
-
-user_input_arr = np.array([user_input[col] for col in input_cols])
+# Kolom Input dari pengguna dengan teks diperbarui
+input_ni = st.number_input("Ni (ppm):", min_value=0.0, format="%.2f")
+input_fe = st.number_input("Fe (%):", min_value=0.0, format="%.2f")
+input_cao = st.number_input("CaO (%):", min_value=0.0, format="%.2f")
+input_al2o3 = st.number_input("Al2O3 (%):", min_value=0.0, format="%.2f")
+input_s_m = st.number_input("S/M Ratio (%):", min_value=0.0, format="%.2f")
+input_bc = st.number_input("BC:", min_value=0.0, format="%.2f")
+input_mc_kilnfeed = st.number_input("MC Kilnfeed (%):", min_value=0.0, format="%.2f")
+input_fc_coal = st.number_input("FC Coal (%):", min_value=0.0, format="%.2f")
+input_gcv_coal = st.number_input("GCV Coal (kcal/kg):", min_value=0.0, format="%.2f")
+input_fc_lcv = st.number_input("FC LCV (%):", min_value=0.0, format="%.2f")
+input_gcv_lcv = st.number_input("GCV LCV (kcal/kg):", min_value=0.0, format="%.2f")
+input_kg_tco = st.number_input("KG TCO (ton/jam):", min_value=0.0, format="%.2f")
+input_charge_kiln = st.number_input("Charge Kiln (ton/jam):", min_value=0.0, format="%.2f")
+input_tdo = st.number_input("TDO (ton/jam):", min_value=0.0, format="%.2f")
 
 # --- Optimization Constraints (copied/adapted from SLSQP-0c.py) ---
 iqr_df = df_to_optimize.quantile(0.75) - df_to_optimize.quantile(0.25)
@@ -192,26 +203,135 @@ def optimize_sample(fixed_inputs):
     )
     return result
 
-# --- Run Optimization Button ---
-if st.button("Jalankan Optimasi"):
+# Map user inputs to the input array expected by the optimization function
+def create_input_array():
+    # Create a mapping of inputs to their positions in the expected array
+    # This is simplified - you would need to map all inputs correctly based on your data
+    input_dict = {
+        'ni_in': input_ni,
+        'fe_in': input_fe,
+        'cao_in': input_cao,
+        'al2o3_in': input_al2o3,
+        's_m': input_s_m,
+        'bc': input_bc,
+        'mc_kilnfeed': input_mc_kilnfeed,
+        'fc_coal': input_fc_coal,
+        'gcv_coal': input_gcv_coal,
+        'fc_lcv': input_fc_lcv,
+        'gcv_lcv': input_gcv_lcv,
+        'kg_tco': input_kg_tco,
+        'charge_kiln': input_charge_kiln, 
+        'tdo': input_tdo
+    }
+
+    # Create an array with default values for all inputs
+    # For missing inputs, use median values from the dataset
+    input_array = []
+    for col in input_cols:
+        if col in input_dict:
+            input_array.append(input_dict[col])
+        else:
+            # Use median for any missing inputs
+            input_array.append(df_filtered[col].median())
+    
+    return np.array(input_array)
+
+# Tombol untuk mengirim data
+if st.button("Hitung"):
     with st.spinner("Mengoptimasi... Mohon tunggu."):
-        # Predict output for user input
-        # user_input_norm = scaler_x.transform([user_input_arr])[0]
-        # pred_output = ridge_model.predict(user_input_norm.reshape(1, -1))[0]
-        # pred_output_orig = inverse_transform_row(pred_output, scaler_y, output_cols)
-        # st.write("### Output Model untuk Input yang Dimasukkan (Sebelum Optimasi)")
-        # st.dataframe(pred_output_orig)
+        # Get input array from user inputs
+        user_input_arr = create_input_array()
+        
         # Run optimization
         result = optimize_sample(user_input_arr)
+        
         if result.success:
             optimized_x = result.x
             optimized_y = ridge_model.predict(optimized_x.reshape(1, -1))[0]
+            
+            # Convert normalized results back to original scale
             optimized_x_orig = inverse_transform_row(optimized_x, scaler_x, input_cols)
             optimized_y_orig = inverse_transform_row(optimized_y, scaler_y, output_cols)
-            st.success("Optimasi berhasil!")
-            st.write("### Input Proses yang Dioptimalkan (Skala Asli)")
-            st.dataframe(optimized_x_orig)
-            st.write("### Output Model untuk Input yang Dioptimalkan")
-            st.dataframe(optimized_y_orig)
+            
+            # Print columns for debugging
+            st.write("### Available Input Columns:")
+            st.write(list(optimized_x_orig.index))
+            
+            # Prepare output dictionaries for display
+            output = {}
+            
+            # Add values to output dictionary only if the column exists
+            column_mapping = {
+                "Tegangan (Volt)": "voltage" if "voltage" in optimized_x_orig else None,
+                "Arus (Kilo Ampere)": "current_pry" if "current_pry" in optimized_x_orig else None,
+                "Beban Listrik (Load MW)": "load" if "load" in optimized_x_orig else None,
+                "Kecepatan Putar (RPM)": "rpm" if "rpm" in optimized_x_orig else None,
+                "Aliran Udara Katup Primer (Pry_p)": "pry_p" if "pry_p" in optimized_x_orig else None,
+                "Aliran Udara Katup Sekunder (Sec_p)": "sec_p" if "sec_p" in optimized_x_orig else None,
+                "Tekanan Udara Primer (Pry_v)": "pry_v" if "pry_v" in optimized_x_orig else None,
+                "Tekanan Udara Sekunder (Sec_v)": "sec_v" if "sec_v" in optimized_x_orig else None,
+                "Total Konsumsi Batu Bara (Total Fuel)": "total_fuel" if "total_fuel" in optimized_x_orig else None,
+                "Rasio Udara-Bahan Bakar (A/F Ratio)": "a_f_ratio" if "a_f_ratio" in optimized_x_orig else None,
+                "Rasio Reduktor": "reductor_ratio" if "reductor_ratio" in optimized_x_orig else None,
+                "Konsumsi Reduktor (Reductor Consume)": "reductor_consume" if "reductor_consume" in optimized_x_orig else None,
+                "Temperatur TIC 162": "t_tic162" if "t_tic162" in optimized_x_orig else None,
+                "Temperatur TIC 163": "t_tic163" if "t_tic163" in optimized_x_orig else None
+            }
+            
+            for display_name, col_name in column_mapping.items():
+                if col_name and col_name in optimized_x_orig:
+                    output[display_name] = round(optimized_x_orig[col_name], 3)
+            
+            # Print columns for debugging
+            st.write("### Available Output Columns:")
+            st.write(list(optimized_y_orig.index))
+            
+            output_y = {}
+            y_column_mapping = {
+                "Temperatur Metal (Temp Metal)": "metal_temp" if "metal_temp" in optimized_y_orig else None,
+                "Kandungan Ni di Metal (Ni Met)": "ni_met" if "ni_met" in optimized_y_orig else None,
+                "Kandungan C di Metal (C Met)": "c_met" if "c_met" in optimized_y_orig else None,
+                "Kandungan Si di Metal (Si Met)": "si_met" if "si_met" in optimized_y_orig else None,
+                "Kandungan Fe di Metal (Fe Met)": "fe_met" if "fe_met" in optimized_y_orig else None,
+                "Kandungan S di Metal (S Met)": "s_met" if "s_met" in optimized_y_orig else None,
+                "Kandungan Ni di Slag (Ni Slag)": "ni_slag" if "ni_slag" in optimized_y_orig else None,
+                "Kandungan Fe di Slag (Fe Slag)": "fe_slag" if "fe_slag" in optimized_y_orig else None,
+                "Temperatur Kalsinasi (T Kalsin)": "t_kalsin" if "t_kalsin" in optimized_y_orig else None,
+                "Temperatur PIC 161": "pic_161" if "pic_161" in optimized_y_orig else None,
+                "Loss on Ignition Kalsinasi (LOI Kalsin)": "loi_kalsin" if "loi_kalsin" in optimized_y_orig else None
+            }
+            
+            for display_name, col_name in y_column_mapping.items():
+                if col_name and col_name in optimized_y_orig:
+                    output_y[display_name] = round(optimized_y_orig[col_name], 3)
+
+            # Display results using HTML tables like in streamlit_old.py
+            # Menyusun output menjadi tabel HTML untuk output pertama (output)
+            output_html_1 = "<table style='width:100%; border: 1px solid black; border-collapse: collapse;'>"
+            output_html_1 += "<tr><th style='padding: 8px; text-align: left;'>Parameter</th><th style='padding: 8px; text-align: left;'>Value</th></tr>"
+
+            for param, value in output.items():
+                formatted_value = f"{value:.2f}".replace('.', ',')  # Format dengan 2 angka di belakang koma, ubah titik menjadi koma
+                output_html_1 += f"<tr><td style='padding: 8px; border: 1px solid black;'>{param}</td><td style='padding: 8px; border: 1px solid black;'>{formatted_value}</td></tr>"
+
+            output_html_1 += "</table>"
+
+            # Menyusun output menjadi tabel HTML untuk output kedua (output_y)
+            output_html_2 = "<table style='width:100%; border: 1px solid black; border-collapse: collapse;'>"
+            output_html_2 += "<tr><th style='padding: 8px; text-align: left;'>Parameter</th><th style='padding: 8px; text-align: left;'>Value</th></tr>"
+
+            for param, value in output_y.items():
+                formatted_value = f"{value:.2f}".replace('.', ',')  # Format dengan 2 angka di belakang koma, ubah titik menjadi koma
+                output_html_2 += f"<tr><td style='padding: 8px; border: 1px solid black;'>{param}</td><td style='padding: 8px; border: 1px solid black;'>{formatted_value}</td></tr>"
+
+            output_html_2 += "</table>"
+
+            # Menampilkan kedua tabel HTML di Streamlit
+            st.markdown("### Input", unsafe_allow_html=True)
+            st.markdown(output_html_1, unsafe_allow_html=True)
+
+            st.markdown("### Output Target", unsafe_allow_html=True)
+            st.markdown(output_html_2, unsafe_allow_html=True)
+            
         else:
             st.error(f"Optimisasi gagal: {result.message}")
