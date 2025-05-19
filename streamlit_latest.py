@@ -253,9 +253,9 @@ if st.button("Hitung"):
             optimized_x_orig = inverse_transform_row(optimized_x, scaler_x, input_cols)
             optimized_y_orig = inverse_transform_row(optimized_y, scaler_y, output_cols)
             
-            # Print columns for debugging
-            st.write("### Available Input Columns:")
-            st.write(list(optimized_x_orig.index))
+            # # Print columns for debugging
+            # st.write("### Available Input Columns:")
+            # st.write(list(optimized_x_orig.index))
             
             # Prepare output dictionaries for display
             output = {}
@@ -282,9 +282,9 @@ if st.button("Hitung"):
                 if col_name and col_name in optimized_x_orig:
                     output[display_name] = round(optimized_x_orig[col_name], 3)
             
-            # Print columns for debugging
-            st.write("### Available Output Columns:")
-            st.write(list(optimized_y_orig.index))
+            # # Print columns for debugging
+            # st.write("### Available Output Columns:")
+            # st.write(list(optimized_y_orig.index))
             
             output_y = {}
             y_column_mapping = {
