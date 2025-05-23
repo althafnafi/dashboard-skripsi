@@ -24,9 +24,9 @@ data_dir = "dataframe"
 df_filtered = pd.read_csv(f"{data_dir}/df_filtered.csv")
 df_to_optimize = pd.read_csv(f"{data_dir}/df_to_optimize.csv")
 
-# Input and output columns (exactly as in SLSQP-0e.py without list conversion)
-input_cols = df_to_optimize.loc[:, 'ni_in':'t_tic163'].columns
-output_cols = df_to_optimize.loc[:, 'metal_temp':'loi_kalsin'].columns
+# Input and output columns (as in SLSQP-0c.py)
+input_cols = list(df_to_optimize.loc[:, 'ni_in':'t_tic163'].columns)
+output_cols = list(df_to_optimize.loc[:, 'metal_temp':'loi_kalsin'].columns)
 
 # Setup input/output scalers for optimization
 scaler_x = MinMaxScaler()
@@ -42,130 +42,6 @@ ridge_model = load(model_path)
 def inverse_transform_row(row, scaler, columns):
     arr = np.array(row).reshape(1, -1)
     return pd.Series(scaler.inverse_transform(arr)[0], index=columns)
-
-# Calculate the IQR for each column (exactly as in SLSQP-0e.py)
-iqr_df = df_to_optimize.quantile(0.75) - df_to_optimize.quantile(0.25)
-iqr_df_for_test = iqr_df.to_frame(name='IQR').reset_index()
-iqr_df_for_test.rename(columns={'index': 'Column'}, inplace=True)
-
-# Calculate the standard deviation for each column (exactly as in SLSQP-0e.py)
-std_df = df_to_optimize.std()
-std_df_for_test = std_df.to_frame(name='Standard Deviation').reset_index()
-std_df_for_test.rename(columns={'index': 'Column'}, inplace=True)
-
-# --- Output Constraint Definitions (as in SLSQP-0e.py) ---
-min_values_y = scaler_y.data_min_
-max_values_y = scaler_y.data_max_
-bounds_y = [(i, j) for i, j in zip(min_values_y, max_values_y)]
-
-metal_temp = 1300
-metal_temp_norm = (metal_temp - bounds_y[0][0]) / (bounds_y[0][1] - bounds_y[0][0])
-
-ni_met = 17 - 3 * std_df_for_test.loc[std_df_for_test['Column'] == 'ni_met', 'Standard Deviation'].values[0]
-ni_met_norm = (ni_met - bounds_y[1][0]) / (bounds_y[1][1] - bounds_y[1][0])
-
-c_met_low = 1
-c_met_low_norm = (c_met_low - bounds_y[2][0]) / (bounds_y[2][1] - bounds_y[2][0])
-c_met_high = 3
-c_met_high_norm = (c_met_high - bounds_y[2][0]) / (bounds_y[2][1] - bounds_y[2][0])
-
-si_met_low = 1 - 1.5 * iqr_df_for_test.loc[iqr_df_for_test['Column'] == 'si_met', 'IQR'].values[0]
-si_met_low_norm = (si_met_low - bounds_y[3][0]) / (bounds_y[3][1] - bounds_y[3][0])
-si_met_high = 2
-si_met_high_norm = (si_met_high - bounds_y[3][0]) / (bounds_y[3][1] - bounds_y[3][0])
-
-fe_met_low = 0
-fe_met_low_norm = (fe_met_low - bounds_y[4][0]) / (bounds_y[4][1] - bounds_y[4][0])
-
-s_met_low = 0
-s_met_low_norm = (s_met_low - bounds_y[5][0]) / (bounds_y[5][1] - bounds_y[5][0])
-s_met_high = 0.4 + 1.5 * iqr_df_for_test.loc[iqr_df_for_test['Column'] == 's_met', 'IQR'].values[0]
-s_met_high_norm = (s_met_high - bounds_y[5][0]) / (bounds_y[5][1] - bounds_y[5][0])
-
-ni_slag_low = 0
-ni_slag_low_norm = (ni_slag_low - bounds_y[6][0]) / (bounds_y[6][1] - bounds_y[6][0])
-
-fe_slag_low = 0
-fe_slag_low_norm = (fe_slag_low - bounds_y[7][0]) / (bounds_y[7][1] - bounds_y[7][0])
-
-t_kalsin_low = 600
-t_kalsin_low_norm = (t_kalsin_low - bounds_y[8][0]) / (bounds_y[8][1] - bounds_y[8][0])
-
-pic_161_low = -5.28  # Note: This uses -5.28 as in SLSQP-0e.py, not -5.38 as in the original streamlit_latest.py
-pic_161_low_norm = (pic_161_low - bounds_y[9][0]) / (bounds_y[9][1] - bounds_y[9][0])
-
-loi_kalsin_low = 0
-loi_kalsin_low_norm = (loi_kalsin_low - bounds_y[10][0]) / (bounds_y[10][1] - bounds_y[10][0])
-loi_kalsin_high = 1
-loi_kalsin_high_norm = (loi_kalsin_high - bounds_y[10][0]) / (bounds_y[10][1] - bounds_y[10][0])
-
-# --- Input Constraint Definitions (as in SLSQP-0e.py) ---
-min_values_x = scaler_x.data_min_
-max_values_x = scaler_x.data_max_
-bounds_x = [(i, j) for i, j in zip(min_values_x, max_values_x)]
-
-current_pry_min = 0
-current_pry_min_norm = (current_pry_min - bounds_x[11][0]) / (bounds_x[11][1] - bounds_x[11][0])
-
-current_sec1_min = 0
-current_sec1_min_norm = (current_sec1_min - bounds_x[12][0]) / (bounds_x[12][1] - bounds_x[12][0])
-
-current_sec2_min = 0
-current_sec2_min_norm = (current_sec2_min - bounds_x[13][0]) / (bounds_x[13][1] - bounds_x[13][0])
-
-current_sec3_min = 0
-current_sec3_min_norm = (current_sec3_min - bounds_x[14][0]) / (bounds_x[14][1] - bounds_x[14][0])
-
-load_min = 0
-load_min_norm = (load_min - bounds_x[15][0]) / (bounds_x[15][1] - bounds_x[15][0])
-
-realisasi_beban_min = 0
-realisasi_beban_min_norm = (realisasi_beban_min - bounds_x[16][0]) / (bounds_x[16][1] - bounds_x[16][0])
-
-rpm_min = 0
-rpm_min_norm = (rpm_min - bounds_x[17][0]) / (bounds_x[17][1] - bounds_x[17][0])
-rpm_max = np.percentile(df_to_optimize['rpm'], 50)
-rpm_max_norm = (rpm_max - bounds_x[17][0]) / (bounds_x[17][1] - bounds_x[17][0])
-
-pry_p_min = 0
-pry_p_min_norm = (pry_p_min - bounds_x[21][0]) / (bounds_x[21][1] - bounds_x[21][0])
-pry_p_max = np.percentile(df_to_optimize['pry_p'], 50)
-pry_p_max_norm = (pry_p_max - bounds_x[21][0]) / (bounds_x[21][1] - bounds_x[21][0])
-
-sec_p_min = 0
-sec_p_min_norm = (sec_p_min - bounds_x[22][0]) / (bounds_x[22][1] - bounds_x[22][0])
-sec_p_max = np.percentile(df_to_optimize['sec_p'], 50)
-sec_p_max_norm = (sec_p_max - bounds_x[22][0]) / (bounds_x[22][1] - bounds_x[22][0])
-
-pry_v_min = 0
-pry_v_min_norm = (pry_v_min - bounds_x[23][0]) / (bounds_x[23][1] - bounds_x[23][0])
-pry_v_max = np.percentile(df_to_optimize['pry_v'], 50)
-pry_v_max_norm = (pry_v_max - bounds_x[23][0]) / (bounds_x[23][1] - bounds_x[23][0])
-
-sec_v_min = 0
-sec_v_min_norm = (sec_v_min - bounds_x[24][0]) / (bounds_x[24][1] - bounds_x[24][0])
-sec_v_max = np.percentile(df_to_optimize['sec_v'], 50)
-sec_v_max_norm = (sec_v_max - bounds_x[24][0]) / (bounds_x[24][1] - bounds_x[24][0])
-
-total_fuel_min = 0
-total_fuel_min_norm = (total_fuel_min - bounds_x[25][0]) / (bounds_x[25][1] - bounds_x[25][0])
-total_fuel_max = np.percentile(df_to_optimize['total_fuel'], 50)
-total_fuel_max_norm = (total_fuel_max - bounds_x[25][0]) / (bounds_x[25][1] - bounds_x[25][0])
-
-reductor_consume_min = 0
-reductor_consume_min_norm = (reductor_consume_min - bounds_x[26][0]) / (bounds_x[26][1] - bounds_x[26][0])
-reductor_consume_max = np.percentile(df_to_optimize['reductor_consume'], 50)
-reductor_consume_max_norm = (reductor_consume_max - bounds_x[26][0]) / (bounds_x[26][1] - bounds_x[26][0])
-
-t_tic162_min = 556
-t_tic162_min_norm = (t_tic162_min - bounds_x[27][0]) / (bounds_x[27][1] - bounds_x[27][0])
-t_tic162_max = np.percentile(df_to_optimize['t_tic162'], 50)
-t_tic162_max_norm = (t_tic162_max - bounds_x[27][0]) / (bounds_x[27][1] - bounds_x[27][0])
-
-t_tic163_min = 456
-t_tic163_min_norm = (t_tic163_min - bounds_x[28][0]) / (bounds_x[28][1] - bounds_x[28][0])
-t_tic163_max = 845
-t_tic163_max_norm = (t_tic163_max - bounds_x[28][0]) / (bounds_x[28][1] - bounds_x[28][0])
 
 # Kolom Input dari pengguna dengan teks diperbarui
 input_ni = st.number_input("Ni (ppm):", min_value=0.0, format="%.2f")
@@ -183,15 +59,94 @@ input_kg_tco = st.number_input("KG TCO (ton/jam):", min_value=0.0, format="%.2f"
 input_charge_kiln = st.number_input("Charge Kiln (ton/jam):", min_value=0.0, format="%.2f")
 input_tdo = st.number_input("TDO (ton/jam):", min_value=0.0, format="%.2f")
 
-# --- Optimization Function for user inputs ---
+# --- Optimization Constraints (copied/adapted from SLSQP-0c.py) ---
+iqr_df = df_to_optimize.quantile(0.75) - df_to_optimize.quantile(0.25)
+std_df = df_to_optimize.std()
+
+min_values_y = scaler_y.data_min_
+max_values_y = scaler_y.data_max_
+bounds_y = [(i, j) for i, j in zip(min_values_y, max_values_y)]
+
+metal_temp = 1300
+metal_temp_norm = (metal_temp - bounds_y[0][0]) / (bounds_y[0][1] - bounds_y[0][0])
+ni_met = 17 - 3 * std_df['ni_met']
+ni_met_norm = (ni_met - bounds_y[1][0]) / (bounds_y[1][1] - bounds_y[1][0])
+c_met_low, c_met_high = 1, 3
+c_met_low_norm = (c_met_low - bounds_y[2][0]) / (bounds_y[2][1] - bounds_y[2][0])
+c_met_high_norm = (c_met_high - bounds_y[2][0]) / (bounds_y[2][1] - bounds_y[2][0])
+si_met_low = 1 - 1.5 * iqr_df['si_met']
+si_met_high = 2
+si_met_low_norm = (si_met_low - bounds_y[3][0]) / (bounds_y[3][1] - bounds_y[3][0])
+si_met_high_norm = (si_met_high - bounds_y[3][0]) / (bounds_y[3][1] - bounds_y[3][0])
+fe_met_low = 0
+fe_met_low_norm = (fe_met_low - bounds_y[4][0]) / (bounds_y[4][1] - bounds_y[4][0])
+s_met_low = 0
+s_met_high = 0.4 + 1.5 * iqr_df['s_met']
+s_met_low_norm = (s_met_low - bounds_y[5][0]) / (bounds_y[5][1] - bounds_y[5][0])
+s_met_high_norm = (s_met_high - bounds_y[5][0]) / (bounds_y[5][1] - bounds_y[5][0])
+ni_slag_low = 0
+ni_slag_low_norm = (ni_slag_low - bounds_y[6][0]) / (bounds_y[6][1] - bounds_y[6][0])
+fe_slag_low = 0
+fe_slag_low_norm = (fe_slag_low - bounds_y[7][0]) / (bounds_y[7][1] - bounds_y[7][0])
+t_kalsin_low = 600
+t_kalsin_low_norm = (t_kalsin_low - bounds_y[8][0]) / (bounds_y[8][1] - bounds_y[8][0])
+pic_161_low = -5.38
+pic_161_low_norm = (pic_161_low - bounds_y[9][0]) / (bounds_y[9][1] - bounds_y[9][0])
+loi_kalsin_low, loi_kalsin_high = 0, 1
+loi_kalsin_low_norm = (loi_kalsin_low - bounds_y[10][0]) / (bounds_y[10][1] - bounds_y[10][0])
+loi_kalsin_high_norm = (loi_kalsin_high - bounds_y[10][0]) / (bounds_y[10][1] - bounds_y[10][0])
+
+min_values_x = scaler_x.data_min_
+max_values_x = scaler_x.data_max_
+bounds_x = [(i, j) for i, j in zip(min_values_x, max_values_x)]
+
+def get_percentile(col, p):
+    return np.percentile(df_to_optimize[col], p)
+
+rpm_max = get_percentile('rpm', 50)
+rpm_max_norm = (rpm_max - bounds_x[17][0]) / (bounds_x[17][1] - bounds_x[17][0])
+pry_p_max = get_percentile('pry_p', 50)
+pry_p_max_norm = (pry_p_max - bounds_x[21][0]) / (bounds_x[21][1] - bounds_x[21][0])
+sec_p_max = get_percentile('sec_p', 50)
+sec_p_max_norm = (sec_p_max - bounds_x[22][0]) / (bounds_x[22][1] - bounds_x[22][0])
+pry_v_max = get_percentile('pry_v', 50)
+pry_v_max_norm = (pry_v_max - bounds_x[23][0]) / (bounds_x[23][1] - bounds_x[23][0])
+sec_v_max = get_percentile('sec_v', 50)
+sec_v_max_norm = (sec_v_max - bounds_x[24][0]) / (bounds_x[24][1] - bounds_x[24][0])
+total_fuel_max = get_percentile('total_fuel', 50)
+total_fuel_max_norm = (total_fuel_max - bounds_x[25][0]) / (bounds_x[25][1] - bounds_x[25][0])
+reductor_consume_max = get_percentile('reductor_consume', 50)
+reductor_consume_max_norm = (reductor_consume_max - bounds_x[26][0]) / (bounds_x[26][1] - bounds_x[26][0])
+t_tic162_max = get_percentile('t_tic162', 50)
+t_tic162_max_norm = (t_tic162_max - bounds_x[27][0]) / (bounds_x[27][1] - bounds_x[27][0])
+t_tic163_max = 845
+t_tic163_max_norm = (t_tic163_max - bounds_x[28][0]) / (bounds_x[28][1] - bounds_x[28][0])
+
+current_pry_min_norm = (0 - bounds_x[11][0]) / (bounds_x[11][1] - bounds_x[11][0])
+current_sec1_min_norm = (0 - bounds_x[12][0]) / (bounds_x[12][1] - bounds_x[12][0])
+current_sec2_min_norm = (0 - bounds_x[13][0]) / (bounds_x[13][1] - bounds_x[13][0])
+current_sec3_min_norm = (0 - bounds_x[14][0]) / (bounds_x[14][1] - bounds_x[14][0])
+load_min_norm = (0 - bounds_x[15][0]) / (bounds_x[15][1] - bounds_x[15][0])
+realisasi_beban_min_norm = (0 - bounds_x[16][0]) / (bounds_x[16][1] - bounds_x[16][0])
+rpm_min_norm = (0 - bounds_x[17][0]) / (bounds_x[17][1] - bounds_x[17][0])
+pry_p_min_norm = (0 - bounds_x[21][0]) / (bounds_x[21][1] - bounds_x[21][0])
+sec_p_min_norm = (0 - bounds_x[22][0]) / (bounds_x[22][1] - bounds_x[22][0])
+pry_v_min_norm = (0 - bounds_x[23][0]) / (bounds_x[23][1] - bounds_x[23][0])
+sec_v_min_norm = (0 - bounds_x[24][0]) / (bounds_x[24][1] - bounds_x[24][0])
+total_fuel_min_norm = (0 - bounds_x[25][0]) / (bounds_x[25][1] - bounds_x[25][0])
+reductor_consume_min_norm = (0 - bounds_x[26][0]) / (bounds_x[26][1] - bounds_x[26][0])
+t_tic162_min = 556
+t_tic162_min_norm = (t_tic162_min - bounds_x[27][0]) / (bounds_x[27][1] - bounds_x[27][0])
+t_tic163_min = 456
+t_tic163_min_norm = (t_tic163_min - bounds_x[28][0]) / (bounds_x[28][1] - bounds_x[28][0])
+
+# --- Optimization Function ---
 def optimize_sample(fixed_inputs):
     x0 = scaler_x.transform([fixed_inputs])[0]
     eq_vals = x0.copy()
-    
     def objective(x):
         y_pred = ridge_model.predict(x.reshape(1, -1))[0]
         return np.sum(y_pred - ridge_model.predict(x0.reshape(1, -1))[0]) ** 2
-    
     constraints = [
         {'type': 'eq', 'fun': lambda x, i=i, v=eq_vals[i]: x[i] - v} for i in range(0, 6)
     ]
@@ -223,35 +178,35 @@ def optimize_sample(fixed_inputs):
         {'type': 'ineq', 'fun': lambda x: t_tic162_max_norm - x[27]},
         {'type': 'ineq', 'fun': lambda x: x[28] - t_tic163_min_norm},
         {'type': 'ineq', 'fun': lambda x: t_tic163_max_norm - x[28]},
-        {'type': 'ineq', 'fun': lambda x, metal_temp_norm=metal_temp_norm: ridge_model.predict(x.reshape(1, -1))[0][0] - metal_temp_norm},
-        {'type': 'ineq', 'fun': lambda x, ni_met_norm=ni_met_norm: ridge_model.predict(x.reshape(1, -1))[0][1] - ni_met_norm},
-        {'type': 'ineq', 'fun': lambda x, c_met_low_norm=c_met_low_norm: ridge_model.predict(x.reshape(1, -1))[0][2] - c_met_low_norm},
-        {'type': 'ineq', 'fun': lambda x, c_met_high_norm=c_met_high_norm: c_met_high_norm - ridge_model.predict(x.reshape(1, -1))[0][2]},
-        {'type': 'ineq', 'fun': lambda x, si_met_low_norm=si_met_low_norm: ridge_model.predict(x.reshape(1, -1))[0][3] - si_met_low_norm},
-        {'type': 'ineq', 'fun': lambda x, si_met_high_norm=si_met_high_norm: si_met_high_norm - ridge_model.predict(x.reshape(1, -1))[0][3]},
-        {'type': 'ineq', 'fun': lambda x, fe_met_low_norm=fe_met_low_norm: ridge_model.predict(x.reshape(1, -1))[0][4] - fe_met_low_norm},
-        {'type': 'ineq', 'fun': lambda x, s_met_low_norm=s_met_low_norm: ridge_model.predict(x.reshape(1, -1))[0][5] - s_met_low_norm},
-        {'type': 'ineq', 'fun': lambda x, s_met_high_norm=s_met_high_norm: s_met_high_norm - ridge_model.predict(x.reshape(1, -1))[0][5]},
-        {'type': 'ineq', 'fun': lambda x, ni_slag_low_norm=ni_slag_low_norm: ridge_model.predict(x.reshape(1, -1))[0][6] - ni_slag_low_norm},
-        {'type': 'ineq', 'fun': lambda x, fe_slag_low_norm=fe_slag_low_norm: ridge_model.predict(x.reshape(1, -1))[0][7] - fe_slag_low_norm},
-        {'type': 'ineq', 'fun': lambda x, t_kalsin_low_norm=t_kalsin_low_norm: ridge_model.predict(x.reshape(1, -1))[0][8] - t_kalsin_low_norm},
-        {'type': 'ineq', 'fun': lambda x, pic_161_low_norm=pic_161_low_norm: ridge_model.predict(x.reshape(1, -1))[0][9] - pic_161_low_norm},
-        {'type': 'ineq', 'fun': lambda x, loi_kalsin_high_norm=loi_kalsin_high_norm: loi_kalsin_high_norm - ridge_model.predict(x.reshape(1, -1))[0][10]},
-        {'type': 'ineq', 'fun': lambda x, loi_kalsin_low_norm=loi_kalsin_low_norm: ridge_model.predict(x.reshape(1, -1))[0][10] - loi_kalsin_low_norm},
+        {'type': 'ineq', 'fun': lambda x: ridge_model.predict(x.reshape(1, -1))[0][0] - metal_temp_norm},
+        {'type': 'ineq', 'fun': lambda x: ridge_model.predict(x.reshape(1, -1))[0][1] - ni_met_norm},
+        {'type': 'ineq', 'fun': lambda x: ridge_model.predict(x.reshape(1, -1))[0][2] - c_met_low_norm},
+        {'type': 'ineq', 'fun': lambda x: c_met_high_norm - ridge_model.predict(x.reshape(1, -1))[0][2]},
+        {'type': 'ineq', 'fun': lambda x: ridge_model.predict(x.reshape(1, -1))[0][3] - si_met_low_norm},
+        {'type': 'ineq', 'fun': lambda x: si_met_high_norm - ridge_model.predict(x.reshape(1, -1))[0][3]},
+        {'type': 'ineq', 'fun': lambda x: ridge_model.predict(x.reshape(1, -1))[0][4] - fe_met_low_norm},
+        {'type': 'ineq', 'fun': lambda x: ridge_model.predict(x.reshape(1, -1))[0][5] - s_met_low_norm},
+        {'type': 'ineq', 'fun': lambda x: s_met_high_norm - ridge_model.predict(x.reshape(1, -1))[0][5]},
+        {'type': 'ineq', 'fun': lambda x: ridge_model.predict(x.reshape(1, -1))[0][6] - ni_slag_low_norm},
+        {'type': 'ineq', 'fun': lambda x: ridge_model.predict(x.reshape(1, -1))[0][7] - fe_slag_low_norm},
+        {'type': 'ineq', 'fun': lambda x: ridge_model.predict(x.reshape(1, -1))[0][8] - t_kalsin_low_norm},
+        {'type': 'ineq', 'fun': lambda x: ridge_model.predict(x.reshape(1, -1))[0][9] - pic_161_low_norm},
+        {'type': 'ineq', 'fun': lambda x: loi_kalsin_high_norm - ridge_model.predict(x.reshape(1, -1))[0][10]},
+        {'type': 'ineq', 'fun': lambda x: ridge_model.predict(x.reshape(1, -1))[0][10] - loi_kalsin_low_norm},
     ]
-    
     result = minimize(
         objective,
-        x0,
-        method='SLSQP',
-        constraints=constraints
+            x0,
+            method='SLSQP',
+            constraints=constraints,
+        options={'maxiter': 200, 'disp': False}
     )
-    
     return result
 
 # Map user inputs to the input array expected by the optimization function
 def create_input_array():
     # Create a mapping of inputs to their positions in the expected array
+    # This is simplified - you would need to map all inputs correctly based on your data
     input_dict = {
         'ni_in': input_ni,
         'fe_in': input_fe,
@@ -282,10 +237,7 @@ def create_input_array():
     return np.array(input_array)
 
 # Tombol untuk mengirim data
-button_hitung = st.button("Hitung", key="hitung_button")
-
-# Handle regular optimization
-if button_hitung:
+if st.button("Hitung"):
     with st.spinner("Mengoptimasi... Mohon tunggu."):
         # Get input array from user inputs
         user_input_arr = create_input_array()
@@ -300,6 +252,10 @@ if button_hitung:
             # Convert normalized results back to original scale
             optimized_x_orig = inverse_transform_row(optimized_x, scaler_x, input_cols)
             optimized_y_orig = inverse_transform_row(optimized_y, scaler_y, output_cols)
+            
+            # # Print columns for debugging
+            # st.write("### Available Input Columns:")
+            # st.write(list(optimized_x_orig.index))
             
             # Prepare output dictionaries for display
             output = {}
@@ -325,6 +281,10 @@ if button_hitung:
             for display_name, col_name in column_mapping.items():
                 if col_name and col_name in optimized_x_orig:
                     output[display_name] = round(optimized_x_orig[col_name], 3)
+            
+            # # Print columns for debugging
+            # st.write("### Available Output Columns:")
+            # st.write(list(optimized_y_orig.index))
             
             output_y = {}
             y_column_mapping = {
