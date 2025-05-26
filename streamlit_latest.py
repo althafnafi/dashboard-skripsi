@@ -8,10 +8,8 @@ import os
 
 st.set_page_config(page_title="Optimasi Proses Rotary Kiln dan Electric Furnace", layout="wide")
 
-# Menampilkan judul aplikasi
 st.title("Optimasi Proses Rotary Kiln dan Electric Furnace")
 
-# Deskripsi aplikasi
 st.write("""
 Aplikasi ini digunakan untuk **menghitung konfigurasi input yang diperlukan** dalam proses **rotary kiln** dan **electric furnace** 
 berdasarkan **komposisi bahan mentah** yang dimasukkan oleh pengguna. 
@@ -19,41 +17,33 @@ berdasarkan **komposisi bahan mentah** yang dimasukkan oleh pengguna.
 Untuk menggunakan aplikasi ini, silakan masukkan komposisi bahan mentah yang diinginkan pada kolom input di bawah ini.
 """)
 
-# --- Load Data ---
 data_dir = "dataframe"
 df_filtered = pd.read_csv(f"{data_dir}/df_filtered.csv")
 df_to_optimize = pd.read_csv(f"{data_dir}/df_to_optimize.csv")
 
-# Input and output columns (exactly as in SLSQP-0e.py without list conversion)
 input_cols = df_to_optimize.loc[:, 'ni_in':'t_tic163'].columns
 output_cols = df_to_optimize.loc[:, 'metal_temp':'loi_kalsin'].columns
 
-# Setup input/output scalers for optimization
 scaler_x = MinMaxScaler()
 scaler_y = MinMaxScaler()
 scaler_x.fit(df_filtered[input_cols])
 scaler_y.fit(df_filtered[output_cols])
 
-# --- Load Model ---
 model_path = "ridge_model_latest.pkl"
 ridge_model = load(model_path)
 
-# --- Utility: Inverse transform for display ---
 def inverse_transform_row(row, scaler, columns):
     arr = np.array(row).reshape(1, -1)
     return pd.Series(scaler.inverse_transform(arr)[0], index=columns)
 
-# Calculate the IQR for each column (exactly as in SLSQP-0e.py)
 iqr_df = df_to_optimize.quantile(0.75) - df_to_optimize.quantile(0.25)
 iqr_df_for_test = iqr_df.to_frame(name='IQR').reset_index()
 iqr_df_for_test.rename(columns={'index': 'Column'}, inplace=True)
 
-# Calculate the standard deviation for each column (exactly as in SLSQP-0e.py)
 std_df = df_to_optimize.std()
 std_df_for_test = std_df.to_frame(name='Standard Deviation').reset_index()
 std_df_for_test.rename(columns={'index': 'Column'}, inplace=True)
 
-# --- Output Constraint Definitions (as in SLSQP-0e.py) ---
 min_values_y = scaler_y.data_min_
 max_values_y = scaler_y.data_max_
 bounds_y = [(i, j) for i, j in zip(min_values_y, max_values_y)]
@@ -91,7 +81,7 @@ fe_slag_low_norm = (fe_slag_low - bounds_y[7][0]) / (bounds_y[7][1] - bounds_y[7
 t_kalsin_low = 600
 t_kalsin_low_norm = (t_kalsin_low - bounds_y[8][0]) / (bounds_y[8][1] - bounds_y[8][0])
 
-pic_161_low = -5.28  # Note: This uses -5.28 as in SLSQP-0e.py, not -5.38 as in the original streamlit_latest.py
+pic_161_low = -5.28
 pic_161_low_norm = (pic_161_low - bounds_y[9][0]) / (bounds_y[9][1] - bounds_y[9][0])
 
 loi_kalsin_low = 0
@@ -99,7 +89,6 @@ loi_kalsin_low_norm = (loi_kalsin_low - bounds_y[10][0]) / (bounds_y[10][1] - bo
 loi_kalsin_high = 1
 loi_kalsin_high_norm = (loi_kalsin_high - bounds_y[10][0]) / (bounds_y[10][1] - bounds_y[10][0])
 
-# --- Input Constraint Definitions (as in SLSQP-0e.py) ---
 min_values_x = scaler_x.data_min_
 max_values_x = scaler_x.data_max_
 bounds_x = [(i, j) for i, j in zip(min_values_x, max_values_x)]
@@ -167,8 +156,7 @@ t_tic163_min_norm = (t_tic163_min - bounds_x[28][0]) / (bounds_x[28][1] - bounds
 t_tic163_max = 845
 t_tic163_max_norm = (t_tic163_max - bounds_x[28][0]) / (bounds_x[28][1] - bounds_x[28][0])
 
-# Kolom Input dari pengguna dengan teks diperbarui
-input_ni = st.number_input("Ni (ppm):", min_value=0.0, format="%.2f")
+input_ni = st.number_input("Ni (%):", min_value=0.0, format="%.2f")
 input_fe = st.number_input("Fe (%):", min_value=0.0, format="%.2f")
 input_cao = st.number_input("CaO (%):", min_value=0.0, format="%.2f")
 input_al2o3 = st.number_input("Al2O3 (%):", min_value=0.0, format="%.2f")
@@ -183,7 +171,6 @@ input_kg_tco = st.number_input("KG TCO (ton/jam):", min_value=0.0, format="%.2f"
 input_charge_kiln = st.number_input("Charge Kiln (ton/jam):", min_value=0.0, format="%.2f")
 input_tdo = st.number_input("TDO (ton/jam):", min_value=0.0, format="%.2f")
 
-# --- Optimization Function for user inputs ---
 def optimize_sample(fixed_inputs):
     x0 = scaler_x.transform([fixed_inputs])[0]
     eq_vals = x0.copy()
@@ -249,9 +236,7 @@ def optimize_sample(fixed_inputs):
     
     return result
 
-# Map user inputs to the input array expected by the optimization function
 def create_input_array():
-    # Create a mapping of inputs to their positions in the expected array
     input_dict = {
         'ni_in': input_ni,
         'fe_in': input_fe,
@@ -269,42 +254,32 @@ def create_input_array():
         'tdo': input_tdo
     }
 
-    # Create an array with default values for all inputs
-    # For missing inputs, use median values from the dataset
     input_array = []
     for col in input_cols:
         if col in input_dict:
             input_array.append(input_dict[col])
         else:
-            # Use median for any missing inputs
             input_array.append(df_filtered[col].median())
     
     return np.array(input_array)
 
-# Tombol untuk mengirim data
 button_hitung = st.button("Hitung", key="hitung_button")
 
-# Handle regular optimization
 if button_hitung:
     with st.spinner("Mengoptimasi... Mohon tunggu."):
-        # Get input array from user inputs
         user_input_arr = create_input_array()
         
-        # Run optimization
         result = optimize_sample(user_input_arr)
         
         if result.success:
             optimized_x = result.x
             optimized_y = ridge_model.predict(optimized_x.reshape(1, -1))[0]
             
-            # Convert normalized results back to original scale
             optimized_x_orig = inverse_transform_row(optimized_x, scaler_x, input_cols)
             optimized_y_orig = inverse_transform_row(optimized_y, scaler_y, output_cols)
             
-            # Prepare output dictionaries for display
             output = {}
             
-            # Add values to output dictionary only if the column exists
             column_mapping = {
                 "Tegangan (Volt)": "voltage" if "voltage" in optimized_x_orig else None,
                 "Arus (Kilo Ampere)": "current_pry" if "current_pry" in optimized_x_orig else None,
@@ -345,28 +320,24 @@ if button_hitung:
                 if col_name and col_name in optimized_y_orig:
                     output_y[display_name] = round(optimized_y_orig[col_name], 3)
 
-            # Display results using HTML tables like in streamlit_old.py
-            # Menyusun output menjadi tabel HTML untuk output pertama (output)
             output_html_1 = "<table style='width:100%; border: 1px solid black; border-collapse: collapse;'>"
             output_html_1 += "<tr><th style='padding: 8px; text-align: left;'>Parameter</th><th style='padding: 8px; text-align: left;'>Value</th></tr>"
 
             for param, value in output.items():
-                formatted_value = f"{value:.2f}".replace('.', ',')  # Format dengan 2 angka di belakang koma, ubah titik menjadi koma
+                formatted_value = f"{value:.2f}".replace('.', ',')
                 output_html_1 += f"<tr><td style='padding: 8px; border: 1px solid black;'>{param}</td><td style='padding: 8px; border: 1px solid black;'>{formatted_value}</td></tr>"
 
             output_html_1 += "</table>"
 
-            # Menyusun output menjadi tabel HTML untuk output kedua (output_y)
             output_html_2 = "<table style='width:100%; border: 1px solid black; border-collapse: collapse;'>"
             output_html_2 += "<tr><th style='padding: 8px; text-align: left;'>Parameter</th><th style='padding: 8px; text-align: left;'>Value</th></tr>"
 
             for param, value in output_y.items():
-                formatted_value = f"{value:.2f}".replace('.', ',')  # Format dengan 2 angka di belakang koma, ubah titik menjadi koma
+                formatted_value = f"{value:.2f}".replace('.', ',')
                 output_html_2 += f"<tr><td style='padding: 8px; border: 1px solid black;'>{param}</td><td style='padding: 8px; border: 1px solid black;'>{formatted_value}</td></tr>"
 
             output_html_2 += "</table>"
 
-            # Menampilkan kedua tabel HTML di Streamlit
             st.markdown("### Input", unsafe_allow_html=True)
             st.markdown(output_html_1, unsafe_allow_html=True)
 
